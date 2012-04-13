@@ -20,8 +20,9 @@ start_workers(Manager, List) ->
 worker_manager_run(Idle_queue) ->
 	receive
 		{Pid, require} ->
+			io:format("~p~n", [Idle_queue]),
 			{Res, Q} = queue:out(Idle_queue),
-			Pid ! Res,
+			Pid ! {value, Res},
 			worker_manager_run(Q);
 		{_, release, Worker} ->
 			Q = queue:in(Worker, Idle_queue),
@@ -42,6 +43,8 @@ start_workers_by_list(Manager, L) ->
 
 start_workers_in_node({_, 0}, _) -> ok;
 start_workers_in_node({Node, Num}, Manager) ->
-	release(Manager, rpc:call(Node, worker, start, [self()])),
+	Worker = rpc:call(Node, worker, start, [Manager]),
+	release(Manager, Worker),
+	io:format("~p~n", [Worker]),
 	start_workers_in_node({Node, Num-1}, Manager).
 
