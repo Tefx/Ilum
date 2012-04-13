@@ -15,7 +15,12 @@ worker_run(Manager) ->
 			worker_run(Manager)
 	end.
 
-eval(Manager, [Func|Args]) -> erlang:apply(Func, pmap_eval(Manager, Args)).
+eval(Manager, [map|[Func|L]]) ->
+	pmap_eval(Manager, [[Func, X]||X<-L]); 
+eval(_, [local|L]) ->
+	local_eval(L);
+eval(Manager, [Func|Args]) -> 
+	erlang:apply(Func, pmap_eval(Manager, Args)).
 
 pmap_eval(M, L) ->
 	S = self(),
@@ -42,5 +47,7 @@ remote_eval(Manager, Parent, E) ->
 			Parent ! {self(), Result}
 	end.
 
+local_eval(E) when not is_list(E) -> E;
+local_eval([Func|Args]) -> erlang:apply(Func, lists:map(local_eval, Args)).
 
 
