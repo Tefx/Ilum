@@ -27,20 +27,14 @@ class Worker(object):
 	def eval(self, e, local=False):
 		if not isinstance(e, list): return e
 		if e[0] == "local": return self.eval(e[1:], True)
-
-		if local:
-			return self.apply(e[0], [self.eval(item, True) for item in e[1:]], True)
-		else:
-			return self.apply(e[0], self.map_eval(e[1:]))
+		return self.apply(e[0], self.map_eval(e[1:], local), local)
 
 	def apply(self, func, args, local=False):
-		if local: return func(*args)
-
-		if func == map:
+		if func == map and not local:
 			el = [[args[0], arg] for arg in args[1]]
 			return self.map_eval(el)
-		elif func == "dot":
-			return dot(*args)
+		elif func == "seq":
+			return self.map_eval(args, local)
 		return func(*args)
 
 	def split_jobs(self, jobs, workers):
@@ -48,22 +42,31 @@ class Worker(object):
 		if num_each * len(workers) < len(jobs):
 			num_each += 1
 		res = []
+		while jobs:
+			if len(jobs) > num_each:
+				res.append(jobs[:num_each])
+				del jobs[:num_each]
+			else:
+				res.append(jobs)
+				break
+		return [(worker, ["local", "seq"] + job) for worker, job in zip(workers, res)]
 
-	def map_eval(self, L):
-		if not L: return []
-		num_job = len(L)
-		if num_job == 1: 
-			return [self.eval(L[0])]
+	def map_eval(self, jobs, local=False):
+		if not jobs: 
+			return []
+		if len(jobs) == 1: 
+			return [self.eval(jobs[0])]
+		if local: 
+			return [self.eval(item, local) for item in jobs]
+		workers = self.coord.require(len(jobs))
+		if len(workers) == 0: 
+			return [self.eval(item, local) for item in jobs]
 
-		workers = self.coord.require(num_job)
-		num_worker = len(workers)
-		if num_worker == 0:
-			result_first = self.eval(L.pop())
-			return [result_first] + self.map_eval(L)
-		else:
-			jobs = [gevent.spawn(worker.eval, job) for (worker, job) in zip(workers, L[:num_worker])]
-			gevent.joinall(jobs)
-			return [job.value for job in jobs] + self.map_eval(L[num_worker:])
+		splited = self.split_jobs(jobs, workers)
+		lets = [gevent.spawn(worker.eval, job) for (worker, job) in splited]
+		gevent.joinall(lets)
+		nested_res = [job.value for job in lets]
+		return [flatten for inner in nested_res for flatten in inner]
 
 class WorkerClient(object):
 	def __init__(self, sock):
