@@ -66,23 +66,19 @@ class StorageSource(object):
             del self.data_dict[id]
             return id
 
-class StoreClient(object):
+class StorageClient(object):
     def __init__(self, host="127.0.0.1:8080"):
         self.conn = HTTPConnection(host)
 
     def add_func(self, func):
-        body = dumps({
-                        "name": func.func_name,
-                        "src" : getsource(func),
-                        "code": mdumps(func.func_code)
-                      })
+        body = mdumps(func.func_code)
         self.conn.request('POST', '/func/'+func.func_name, body)
         return self.conn.getresponse().read()
 
     def get_func(self, id):
         self.conn.request('GET', '/func/'+id, "")
-        code = loads(self.conn.getresponse().read())['code']
-        return FunctionType(mloads(code), {}) 
+        code = self.conn.getresponse().read()
+        return FunctionType(mloads(code), globals()) 
 
     def delete_func(self, id):
         self.conn.request('DELETE', '/func/'+id, "")

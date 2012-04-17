@@ -3,17 +3,19 @@ from gevent.socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM, gethostname,
 from cPickle import dumps, loads
 from sys import argv
 import coordinater
-from funcs import *
+from storage import StorageClient
 
 class Worker(object):
 
-	def __init__(self, local_addr, coord_addr):
+	def __init__(self, local_addr, coord_addr, stor_host):
 		self.coord = coordinater.CoordinaterClient(coord_addr)
+		self.stor = StorageClient(stor_host)
 		self.local_addr = local_addr
 		self.sock = socket(AF_INET, SOCK_STREAM) 
 		self.sock.bind(("", self.local_addr[1])) 
 		self.sock.listen(100) 
 		self.coord.add(self.local_addr)
+		self.func_buf = {}
 		
 	def run(self):
 		while True:
@@ -30,11 +32,18 @@ class Worker(object):
 		return self.apply(e[0], self.map_eval(e[1:], local), local)
 
 	def apply(self, func, args, local=False):
-		if func == map and not local:
+		if func == map:
 			el = [[args[0], arg] for arg in args[1]]
-			return self.map_eval(el)
+			return self.map_eval(el, local)
 		elif func == "seq":
 			return self.map_eval(args, local)
+
+		if isinstance(func, str):
+			if func not in self.func_buf:
+				self.func_buf[func] = self.stor.get_func(func)
+			f = self.func_buf[func]
+			return f(*args)
+
 		return func(*args)
 
 	def split_jobs(self, jobs, workers):
@@ -84,8 +93,9 @@ if __name__ == '__main__':
 	local_addr = (local_ip, int(local_port_str))
 	coord_ip, coord_port_str = argv[2].split(':')
 	coord_addr = (coord_ip, int(coord_port_str))
+	stor_host = argv[3]
 
-	worker = Worker(local_addr, coord_addr)
+	worker = Worker(local_addr, coord_addr, stor_host)
 	worker.run()
 
 
