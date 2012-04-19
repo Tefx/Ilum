@@ -75,13 +75,12 @@ class Worker(object):
 		if local: 
 			return [self.eval(item, local) for item in jobs]
 		workers = self.coord.require(len(jobs))
-		if len(workers) == 0: 
+		if not workers: 
 			return [self.eval(item, local) for item in jobs]
-		splited = self.split_jobs(jobs, workers)
-		lets = [gevent.spawn(worker.eval, job) for (worker, job) in splited]
+		workers.append(self)
+		lets = [gevent.spawn(worker.eval, job) for (worker, job) in self.split_jobs(jobs, workers)]
 		gevent.joinall(lets)
-		nested_res = [job.value for job in lets]
-		return [flatten for inner in nested_res for flatten in inner]
+		return [flatten for inner in [job.value for job in lets] for flatten in inner]
 
 class WorkerClient(object):
 	def __init__(self, sock):
