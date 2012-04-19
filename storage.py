@@ -67,8 +67,8 @@ class StorageSource(object):
             return id
 
 class StorageClient(object):
-    def __init__(self, host="127.0.0.1:8080"):
-        self.conn = HTTPConnection(host)
+    def __init__(self, host, port=8080):
+        self.conn = HTTPConnection(host+":"+str(port))
 
     def add_func(self, func):
         body = mdumps(func.func_code)

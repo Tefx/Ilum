@@ -30,19 +30,19 @@ class Coordinater(object):
 
 	def handle(self, data, addr):
 		if data[0] == "ADD":
-			self.add_worker(data[1])
+			self.add_worker((addr[0], data[1]))
 		elif data[0] == "REQ":
 			res = self.require(data[1])
-			self.sock.sendto(dumps(res), addr)
+			self.sock.sendto(dumps(res)+"\r\n\r\n", addr)
 
 class CoordinaterClient(object):
-	def __init__(self, coord_addr):
-		self.coord_addr = coord_addr
+	def __init__(self, coord_addr, coord_port = 8523):
+		self.coord_addr = (coord_addr, coord_port)
 		self.coon = socket(AF_INET, SOCK_DGRAM)
 
-	def add(self, addr):
+	def add(self, port):
 		self.coon.sendto(
-			dumps(["ADD", addr]), 
+			dumps(["ADD", port]), 
 			self.coord_addr
 			)
 
@@ -58,8 +58,12 @@ class CoordinaterClient(object):
 			dumps(["REQ", num]), 
 			self.coord_addr
 			)
-		data, addr = self.coon.recvfrom(40960000)
-		return [worker for worker in [self.make_worker(addr) for addr in loads(data)] if worker]
+		data = ""
+		while True:
+			data_buf, addr = self.coon.recvfrom(4096)
+			data += data_buf
+			if data[-4:] == "\r\n\r\n": break
+		return [worker for worker in [self.make_worker(addr) for addr in loads(data[:-4])] if worker]
 
 if __name__ == "__main__":
 	if len(argv) < 2:

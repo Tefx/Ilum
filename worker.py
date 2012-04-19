@@ -4,39 +4,48 @@ from cPickle import dumps, loads
 from sys import argv
 import coordinater
 from storage import StorageClient
+import random, os
 
 class Worker(object):
 
-	def __init__(self, local_addr, coord_addr, stor_host):
+	def __init__(self, local_port, coord_addr, stor_addr):
 		self.coord = coordinater.CoordinaterClient(coord_addr)
-		self.stor = StorageClient(stor_host)
-		self.local_addr = local_addr
+		self.stor = StorageClient(stor_addr)
+		self.local_port = local_port
 		self.sock = socket(AF_INET, SOCK_STREAM) 
-		self.sock.bind(("", self.local_addr[1])) 
+		self.sock.bind(("", self.local_port)) 
 		self.sock.listen(100) 
-		self.coord.add(self.local_addr)
+		self.coord.add(self.local_port)
 		self.func_buf = {}
 		
 	def run(self):
 		while True:
 			conn, address = self.sock.accept()  
-			data = loads(conn.recv(40960000))
-			res = self.eval(data)
-			conn.sendall(dumps(res))
-			self.coord.add(self.local_addr)
+			data = ""
+			while True:
+				buf = conn.recv(4096)
+				data += buf
+				if data[-4:] == "\r\n\r\n": break
+			res = self.eval(loads(data[:-4]))
+			conn.sendall(dumps(res)+"\r\n\r\n")
+			self.coord.add(self.local_port)
 			conn.close()
 
 	def eval(self, e, local=False):
-		if not isinstance(e, list): return e
-		if e[0] == "local": return self.eval(e[1:], True)
-		return self.apply(e[0], self.map_eval(e[1:], local), local)
+		if isinstance(e, tuple):
+			if e[0] == "local":
+				return self.eval(e[1:], True)
+			else:
+				return self.apply(e[0], self.map_eval(list(e[1:]), local), local)
+		else:
+			return e
 
 	def apply(self, func, args, local=False):
 		if func == map:
-			el = [[args[0], arg] for arg in args[1]]
+			el = [(args[0], arg) for arg in args[1]]
 			return self.map_eval(el, local)
 		elif func == "seq":
-			return self.map_eval(args, local)
+			return list(self.map_eval(args, local))
 
 		if isinstance(func, str):
 			if func not in self.func_buf:
@@ -58,11 +67,9 @@ class Worker(object):
 			else:
 				res.append(jobs)
 				break
-		return [(worker, ["local", "seq"] + job) for worker, job in zip(workers, res)]
+		return [(worker, tuple(["seq"] + job)) for worker, job in zip(workers, res)]
 
 	def map_eval(self, jobs, local=False):
-		if not jobs: 
-			return []
 		if len(jobs) == 1: 
 			return [self.eval(jobs[0])]
 		if local: 
@@ -70,7 +77,6 @@ class Worker(object):
 		workers = self.coord.require(len(jobs))
 		if len(workers) == 0: 
 			return [self.eval(item, local) for item in jobs]
-
 		splited = self.split_jobs(jobs, workers)
 		lets = [gevent.spawn(worker.eval, job) for (worker, job) in splited]
 		gevent.joinall(lets)
@@ -81,21 +87,32 @@ class WorkerClient(object):
 	def __init__(self, sock):
 		self.sock = sock
 
-
 	def eval(self, E):
-		self.sock.sendall(dumps(E))
-		result = self.sock.recv(40960000)
+		self.sock.sendall(dumps(E)+"\r\n\r\n")
+		result = ""
+		while True:
+			buf = self.sock.recv(4096)
+			result += buf
+			if result[-4:] == "\r\n\r\n": break
 		self.sock.close()
-		return loads(result)
+		return loads(result[:-4])
+
+
+def getPort(start, end):  
+    pscmd = "netstat -ntl |grep -v Active| grep -v Proto|awk '{print $4}'|awk -F: '{print $NF}'"  
+    procs = os.popen(pscmd).read()  
+    procarr = procs.split("\n")  
+    tt= random.randint(start,end)  
+    if tt not in procarr:  
+        return tt  
+    else:  
+        getPort(start, end) 
 
 if __name__ == '__main__':
-	local_ip, local_port_str = argv[1].split(':')
-	local_addr = (local_ip, int(local_port_str))
-	coord_ip, coord_port_str = argv[2].split(':')
-	coord_addr = (coord_ip, int(coord_port_str))
-	stor_host = argv[3]
+	local_port = getPort(32300, 32400)
+	coord_addr, stor_addr = argv[1:]
 
-	worker = Worker(local_addr, coord_addr, stor_host)
+	worker = Worker(local_port, coord_addr, stor_addr)
 	worker.run()
 
 
