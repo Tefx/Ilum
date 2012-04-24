@@ -27,7 +27,6 @@ class Worker(object):
 				buf = conn.recv(4096)
 				data += buf
 				if data[-4:] == "\r\n\r\n": break
-			import sys; print >>sys.stderr, self.local_port, loads(data[:-4])
 			res = self.eval(loads(data[:-4]))
 			conn.sendall(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n")
 			self.coord.add(self.local_port)

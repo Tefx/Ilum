@@ -1,4 +1,5 @@
 import bottle
+import bjoern
 from hashlib import md5
 from inspect import getsource
 from ujson import dumps, loads
@@ -180,4 +181,7 @@ def del_data(id):
         return ""
 
 if __name__ == '__main__':
-    bottle.run(port=8080)
+    bjoern.run(bottle.default_app(), host='', port=80)
+    #bottle.run(port=8080)
+
+
