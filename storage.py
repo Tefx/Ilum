@@ -29,7 +29,7 @@ class StorageSource(object):
             _output = ''.join(_o)
             if _output not in self.data_dict:
                 return _output
-        return ""
+        return _output
 
     def get_func(self, id):
         if id in self.func_dict: 
@@ -46,10 +46,7 @@ class StorageSource(object):
             return id
 
     def add_data(self, content):
-        if len(content) > 512:
-            id = self.shortByHex(content[:512])
-        else:
-            id = self.shortByHex(content)
+        id = self.shortByHex(content)
         self.data_dict[id] = loads(content)
         return id
 
@@ -68,6 +65,7 @@ class StorageSource(object):
 
 class StorageClient(object):
     def __init__(self, host, port=8080):
+        self.base_addr = (host, port)
         self.conn = HTTPConnection(host+":"+str(port))
 
     def add_func(self, func):
@@ -98,7 +96,42 @@ class StorageClient(object):
         self.conn.request('DELETE', '/data/'+id, "")
         return self.conn.getresponse().read()
 
+class Data(object):
+    def __init__(self, data_id, start, end, base_addr):
+        self.base_addr = base_addr
+        self.data_id = data_id
+        self.start = start
+        self.end = end
+        self.data = None
+        self.len = self.end-self.start
 
+    def __len__(self):
+        return self.len
+
+    def __getslice__(self, i, j):
+        if i < 0: 
+            start = self.end + i 
+        else:
+            start = self.start + i
+
+        if j < 0:
+            end = self.end + j
+        else:
+            end = self.start + j
+        return Data(self.data_id, start, end, self.base_addr)
+
+    def __getitem__(self, key):
+        if not self.data:
+            self.data = StorageClient(*self.base_addr).get_data(self.data_id, self.start, self.end)
+        return self.data[key]
+
+    def __repr__(self):
+        return "{%s}[%d:%d]" % (self.data_id, self.start, self.end)
+
+    @classmethod
+    def warp(cls, source, data):
+        data_id = source.add_data(data)
+        return Data(data_id, 0, len(data), source.base_addr)
 
 
 source = StorageSource()

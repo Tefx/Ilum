@@ -1,6 +1,5 @@
-import gevent
-from gevent.socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM
-from cPickle import dumps, loads
+from socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM
+from cPickle import dumps, loads, HIGHEST_PROTOCOL
 from sys import argv
 import worker
 
@@ -25,7 +24,6 @@ class Coordinater(object):
 	def run(self):
 		while True:
 			data, addr = self.sock.recvfrom(1024)
-			#gevent.spawn(self.handle, loads(data), addr)
 			self.handle(loads(data), addr)
 
 	def handle(self, data, addr):
@@ -33,7 +31,7 @@ class Coordinater(object):
 			self.add_worker((addr[0], data[1]))
 		elif data[0] == "REQ":
 			res = self.require(data[1])
-			self.sock.sendto(dumps(res)+"\r\n\r\n", addr)
+			self.sock.sendto(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n", addr)
 
 class CoordinaterClient(object):
 	def __init__(self, coord_addr, coord_port = 8523):
@@ -42,7 +40,7 @@ class CoordinaterClient(object):
 
 	def add(self, port):
 		self.coon.sendto(
-			dumps(["ADD", port]), 
+			dumps(["ADD", port], HIGHEST_PROTOCOL), 
 			self.coord_addr
 			)
 
@@ -55,7 +53,7 @@ class CoordinaterClient(object):
 
 	def require(self, num):
 		self.coon.sendto(
-			dumps(["REQ", num]), 
+			dumps(["REQ", num], HIGHEST_PROTOCOL), 
 			self.coord_addr
 			)
 		data = ""

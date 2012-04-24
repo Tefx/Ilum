@@ -1,6 +1,7 @@
 import gevent
+from gevent import monkey; monkey.patch_all()
 from gevent.socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM, gethostname, gethostbyname
-from cPickle import dumps, loads
+from cPickle import dumps, loads, HIGHEST_PROTOCOL
 from sys import argv
 import coordinater
 from storage import StorageClient
@@ -26,8 +27,9 @@ class Worker(object):
 				buf = conn.recv(4096)
 				data += buf
 				if data[-4:] == "\r\n\r\n": break
+			import sys; print >>sys.stderr, self.local_port, loads(data[:-4])
 			res = self.eval(loads(data[:-4]))
-			conn.sendall(dumps(res)+"\r\n\r\n")
+			conn.sendall(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n")
 			self.coord.add(self.local_port)
 			conn.close()
 
@@ -36,58 +38,62 @@ class Worker(object):
 			if e[0] == "local":
 				return self.eval(e[1:], True)
 			else:
-				return self.apply(e[0], self.map_eval(list(e[1:]), local), local)
+				return self.apply(e[0], self.apply("seq", e[1:], local), local)
 		else:
 			return e
 
 	def apply(self, func, args, local=False):
-		if func == map:
-			el = [(args[0], arg) for arg in args[1]]
-			return self.map_eval(el, local)
-		elif func == "seq":
-			return list(self.map_eval(args, local))
-
 		if isinstance(func, str):
-			if func not in self.func_buf:
-				self.func_buf[func] = self.stor.get_func(func)
-			f = self.func_buf[func]
-			return f(*args)
-
-		return func(*args)
-
-	def split_jobs(self, jobs, workers):
-		num_each = len(jobs) / len(workers)
-		if num_each * len(workers) < len(jobs):
-			num_each += 1
-		res = []
-		while jobs:
-			if len(jobs) > num_each:
-				res.append(jobs[:num_each])
-				del jobs[:num_each]
+			if hasattr(self, func):
+				f = getattr(self, func)
+				return f(args, local)
 			else:
-				res.append(jobs)
-				break
-		return [(worker, tuple(["seq"] + job)) for worker, job in zip(workers, res)]
+				if func not in self.func_buf:
+					self.func_buf[func] = self.stor.get_func(func)
+				f = self.func_buf[func]
+				return f(*args)
+		else:
+			return func(*args)
 
-	def map_eval(self, jobs, local=False):
-		if len(jobs) == 1: 
-			return [self.eval(jobs[0])]
-		if local: 
-			return [self.eval(item, local) for item in jobs]
-		workers = self.coord.require(len(jobs))
-		if not workers: 
-			return [self.eval(item, local) for item in jobs]
-		workers.append(self)
-		lets = [gevent.spawn(worker.eval, job) for (worker, job) in self.split_jobs(jobs, workers)]
+	def map(self, l, local=False):
+		if local: return [self.eval((l[0], item), True) for item in l[1]]
+		workers = self.coord.require(len(l[1]))
+		if not workers: return self.apply_map(self, l, True)
+		jobs = [(worker, ("local", "map", l[0], sl)) for worker, sl in zip(workers, self.split_n(l[1], len(workers)))]
+		return self.distribute(jobs)
+		
+	def seq(self, l, local=False):
+		if len(l) == 1: return [self.eval(l[0], True)]
+		if local: return [self.eval(item, True) for item in l]
+		workers = self.coord.require(len(l))
+		if not workers: return self.apply_seq(self, l, True)
+		jobs = [(worker, ("local", "seq") + tuple(sl)) for worker, sl in zip(workers, self.split_n(l, len(workers)))]
+		return self.distribute(jobs)
+
+	def split_n(self, l, n):
+		len_l = len(l)
+		num = len_l / n
+		k = len_l - num * n
+		end = 0
+		res = []
+		while end < len_l:
+			start = end
+			end = start + num
+			if len(res) < k: end += 1
+			res.append(l[start:end])
+		return res
+
+	def distribute(self, jobs):
+		lets = [gevent.spawn(worker.eval, item) for worker, item in jobs]
 		gevent.joinall(lets)
-		return [flatten for inner in [job.value for job in lets] for flatten in inner]
+		return [flatten for inner in [item.value for item in lets] for flatten in inner]
 
 class WorkerClient(object):
 	def __init__(self, sock):
 		self.sock = sock
 
 	def eval(self, E):
-		self.sock.sendall(dumps(E)+"\r\n\r\n")
+		self.sock.sendall(dumps(E, HIGHEST_PROTOCOL)+"\r\n\r\n")
 		result = ""
 		while True:
 			buf = self.sock.recv(4096)
@@ -95,7 +101,6 @@ class WorkerClient(object):
 			if result[-4:] == "\r\n\r\n": break
 		self.sock.close()
 		return loads(result[:-4])
-
 
 def getPort(start, end):  
     pscmd = "netstat -ntl |grep -v Active| grep -v Proto|awk '{print $4}'|awk -F: '{print $NF}'"  
