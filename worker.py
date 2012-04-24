@@ -27,7 +27,11 @@ class Worker(object):
 				buf = conn.recv(4096)
 				data += buf
 				if data[-4:] == "\r\n\r\n": break
-			res = self.eval(loads(data[:-4]))
+			try:
+				res = self.eval(loads(data[:-4]))
+			except Exception, e:
+				import sys; print >> sys.stderr, self.local_port, e
+				res = e
 			conn.sendall(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n")
 			self.coord.add(self.local_port)
 			conn.close()
@@ -101,6 +105,7 @@ class WorkerClient(object):
 		self.sock.close()
 		return loads(result[:-4])
 
+
 def getPort(start, end):  
     pscmd = "netstat -ntl |grep -v Active| grep -v Proto|awk '{print $4}'|awk -F: '{print $NF}'"  
     procs = os.popen(pscmd).read()  
@@ -112,7 +117,7 @@ def getPort(start, end):
         getPort(start, end) 
 
 if __name__ == '__main__':
-	local_port = getPort(32300, 32400)
+	local_port = getPort(50000, 60000)
 	coord_addr, stor_addr = argv[1:]
 
 	worker = Worker(local_port, coord_addr, stor_addr)

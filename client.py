@@ -10,6 +10,7 @@ class Client(object):
 		if len(workers) == 1:
 			worker = workers[0]
 			res = worker.eval(E)
+			if isinstance(res, Exception): print res
 			return res
 		else:
 			return None
@@ -32,10 +33,11 @@ if __name__ == '__main__':
 
 	e1 = (cmp, 0, (cmp, 4, 6))
 	e2 = ("map", "fun", data)
+	e3 = (cmp, (cmp, 0, (cmp, 0)), (cmp, 0, 4))
 	e4 = ("seq", (cmp, 3, 1), (cmp, 6, 8))
 	e5 = ("local", "seq", (cmp, 3, 1), (cmp, 6, 6))
 	e7 = ("map", "fun", ['1','2','3','4','5','6','7','8','9'])
 	e8 = (range, 10)
 	e9 = ("local", "seq", e7, e7, e7)
 
-	print Client("localhost").eval(e2)
+	print Client("localhost").eval(e1)
