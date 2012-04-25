@@ -1,44 +1,19 @@
 import bottle
-#import bjoern
-from hashlib import md5
 from ujson import dumps, loads
-from marshal import dumps as mdumps
-from marshal import loads as mloads
-from httplib import HTTPConnection
-from types import FunctionType
+from utils import shortByHex
 
 class StorageSource(object):
     def __init__(self):
         self.func_dict = {}
         self.data_dict = {}
 
-    def shortByHex(self, url):
-        _seed = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        _hex = md5(url).hexdigest()
-        _hexLen = len(_hex)
-        _subHexLen = _hexLen / 8
-     
-        for i in xrange(0, _subHexLen):
-            _subHex = _hex[i*8:i*8+8]
-            _subHex = 0x3FFFFFFF&int(1*('0x%s'%_subHex), 16)
-            _o = []
-            for n in xrange(0, 6):
-                _index = 0x0000003D & _subHex
-                _o.append(_seed[int(_index)])
-                _subHex = _subHex >> 5
-            _output = ''.join(_o)
-            if _output not in self.data_dict:
-                return _output
-        return _output
-
     def get_func(self, id):
         if id in self.func_dict: 
             return self.func_dict[id]
 
     def add_func(self, id, content):
-        if id not in self.func_dict:
-            self.func_dict[id] = content
-            return id
+        self.func_dict[id] = content
+        return id
 
     def del_func(self, id):
         if id in self.func_dict:
@@ -46,7 +21,7 @@ class StorageSource(object):
             return id
 
     def add_data(self, content):
-        id = self.shortByHex(content)
+        id = shortByHex(content)
         self.data_dict[id] = loads(content)
         return id
 
@@ -62,77 +37,6 @@ class StorageSource(object):
         if id in self.data_dict:
             del self.data_dict[id]
             return id
-
-class StorageClient(object):
-    def __init__(self, host, port=8080):
-        self.base_addr = (host, port)
-        self.conn = HTTPConnection(host+":"+str(port))
-
-    def add_func(self, func):
-        body = mdumps(func.func_code)
-        self.conn.request('POST', '/func/'+func.func_name, body)
-        return self.conn.getresponse().read()
-
-    def get_func(self, id):
-        self.conn.request('GET', '/func/'+id, "")
-        code = self.conn.getresponse().read()
-        return FunctionType(mloads(code), globals()) 
-
-    def delete_func(self, id):
-        self.conn.request('DELETE', '/func/'+id, "")
-        return self.conn.getresponse().read()
-
-    def add_data(self, data):
-        body = dumps(data)
-        self.conn.request('POST', '/data', body)
-        return self.conn.getresponse().read()
-
-    def get_data(self, id, start=0, end=0):
-        url = "/data/%s/%d/%s" % (id, start, end)
-        self.conn.request('GET', url, "")
-        return loads(self.conn.getresponse().read())
-
-    def delete_data(self, id):
-        self.conn.request('DELETE', '/data/'+id, "")
-        return self.conn.getresponse().read()
-
-class Data(object):
-    def __init__(self, data_id, start, end, base_addr):
-        self.base_addr = base_addr
-        self.data_id = data_id
-        self.start = start
-        self.end = end
-        self.data = None
-        self.len = self.end-self.start
-
-    def __len__(self):
-        return self.len
-
-    def __getslice__(self, i, j):
-        if i < 0: 
-            start = self.end + i 
-        else:
-            start = self.start + i
-
-        if j < 0:
-            end = self.end + j
-        else:
-            end = self.start + j
-        return Data(self.data_id, start, end, self.base_addr)
-
-    def __getitem__(self, key):
-        if not self.data:
-            self.data = StorageClient(*self.base_addr).get_data(self.data_id, self.start, self.end)
-        return self.data[key]
-
-    def __repr__(self):
-        return "{%s}[%d:%d]" % (self.data_id, self.start, self.end)
-
-    @classmethod
-    def warp(cls, source, data):
-        data_id = source.add_data(data)
-        return Data(data_id, 0, len(data), source.base_addr)
-
 
 source = StorageSource()
 
@@ -180,7 +84,6 @@ def del_data(id):
         return ""
 
 if __name__ == '__main__':
-    #bjoern.run(bottle.default_app(), '', 8080)
     bottle.run(port=8080)
 
 

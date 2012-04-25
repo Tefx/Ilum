@@ -1,41 +1,66 @@
 import gevent
 from gevent import monkey; monkey.patch_all()
 from gevent.socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM, gethostname, gethostbyname
-from cPickle import dumps, loads, HIGHEST_PROTOCOL
 from sys import argv
-import coordinater
-from storage import StorageClient
-import random, os
+from client import CoordClient, StorageClient
+from utils import getPort, split_n
+from cPickle import dumps, loads, HIGHEST_PROTOCOL
 
-class Worker(object):
+MIN_PORT_NO = 50000
+MAX_PORT_NO = 60000
 
-	def __init__(self, local_port, coord_addr, stor_addr):
-		self.coord = coordinater.CoordinaterClient(coord_addr)
-		self.stor = StorageClient(stor_addr)
-		self.local_port = local_port
+class BaseWorker(object):
+	def __init__(self, coord_addr, maintain_port):
+		self.coord = CoordClient(coord_addr)
+		self.work_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
+		self.maintain_port = maintain_port
 		self.sock = socket(AF_INET, SOCK_STREAM) 
-		self.sock.bind(("", self.local_port)) 
+		self.sock.bind(("", self.work_port)) 
 		self.sock.listen(100) 
-		self.coord.add(self.local_port)
-		self.func_buf = {}
-		
+
+	def handle(self, data):
+		pass
+
+	def require_workers(self, n):
+		return self.coord.require(n)
+
 	def run(self):
+		gevent.joinall([gevent.spawn(self._server), gevent.spawn(self._maintain)])
+
+	def _server(self):
 		while True:
 			conn, address = self.sock.accept()  
 			data = ""
 			while True:
 				buf = conn.recv(4096)
+				if not buf: break
 				data += buf
 				if data[-4:] == "\r\n\r\n": break
-			try:
-				res = self.eval(loads(data[:-4]))
-			except Exception, e:
-				import sys; print >> sys.stderr, self.local_port, e
-				res = e
+			if not data: break
+			res = self.handle(loads(data[:-4]))
 			conn.sendall(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n")
-			self.coord.add(self.local_port)
 			conn.close()
+			self.coord.add(self.work_port)
 
+	def _maintain(self):
+		self.coord.add(self.work_port)
+		conn = socket(AF_INET, SOCK_DGRAM)
+		conn.bind(('', self.maintain_port))
+		while True:
+			data, addr = conn.recvfrom(1024)
+			if data == "ASK":
+				self.coord = CoordClient(addr[0])
+				self.coord.add(self.work_port)
+
+class Worker(BaseWorker):
+	def __init__(self, maintain_port, coord_addr, stor_addr):
+		super(Worker, self).__init__(coord_addr, maintain_port)
+		self.stor = StorageClient(stor_addr)
+
+	def handle(self, data):
+		self.func_buf = {}
+		return self.eval(data)
+		
 	def eval(self, e, local=False):
 		if isinstance(e, tuple):
 			if e[0] == "local":
@@ -60,65 +85,32 @@ class Worker(object):
 
 	def map(self, l, local=False):
 		if local: return [self.eval((l[0], item), True) for item in l[1]]
-		workers = self.coord.require(len(l[1]))
-		if not workers: return self.apply_map(self, l, True)
-		jobs = [(worker, ("local", "map", l[0], sl)) for worker, sl in zip(workers, self.split_n(l[1], len(workers)))]
+		workers = self.require_workers(len(l[1]))
+		if not workers: return self.map(l, True)
+		jobs = [(worker, ("local", "map", l[0], sl)) for worker, sl in zip(workers, split_n(l[1], len(workers)))]
 		return self.distribute(jobs)
 		
 	def seq(self, l, local=False):
 		if len(l) == 1: return [self.eval(l[0], True)]
 		if local: return [self.eval(item, True) for item in l]
-		workers = self.coord.require(len(l))
-		if not workers: return self.apply_seq(self, l, True)
-		jobs = [(worker, ("local", "seq") + tuple(sl)) for worker, sl in zip(workers, self.split_n(l, len(workers)))]
+		workers = self.require_workers(len(l))
+		if not workers: return self.seq(l, True)
+		jobs = [(worker, ("local", "seq") + tuple(sl)) for worker, sl in zip(workers, split_n(l, len(workers)))]
 		return self.distribute(jobs)
 
-	def split_n(self, l, n):
-		len_l = len(l)
-		num = len_l / n
-		k = len_l - num * n
-		end = 0
-		res = []
-		while end < len_l:
-			start = end
-			end = start + num
-			if len(res) < k: end += 1
-			res.append(l[start:end])
-		return res
-
 	def distribute(self, jobs):
-		lets = [gevent.spawn(worker.eval, item) for worker, item in jobs]
+		lets = [gevent.spawn(worker.process, item) for worker, item in jobs]
 		gevent.joinall(lets)
 		return [flatten for inner in [item.value for item in lets] for flatten in inner]
 
-class WorkerClient(object):
-	def __init__(self, sock):
-		self.sock = sock
-
-	def eval(self, E):
-		self.sock.sendall(dumps(E, HIGHEST_PROTOCOL)+"\r\n\r\n")
-		result = ""
-		while True:
-			buf = self.sock.recv(4096)
-			result += buf
-			if result[-4:] == "\r\n\r\n": break
-		self.sock.close()
-		return loads(result[:-4])
-
-
-def getPort(start, end):  
-    pscmd = "netstat -ntl |grep -v Active| grep -v Proto|awk '{print $4}'|awk -F: '{print $NF}'"  
-    procs = os.popen(pscmd).read()  
-    procarr = procs.split("\n")  
-    tt= random.randint(start,end)  
-    if tt not in procarr:  
-        return tt  
-    else:  
-        getPort(start, end) 
-
 if __name__ == '__main__':
-	local_port = getPort(50000, 60000)
-	coord_addr, stor_addr = argv[1:]
+	from sys import argv
+	local_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
+	if len(argv) < 3:
+		coord_addr = "localhost"
+		stor_addr = "localhost"
+	else:
+		coord_addr, stor_addr = argv[1:]
 
 	worker = Worker(local_port, coord_addr, stor_addr)
 	worker.run()
