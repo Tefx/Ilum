@@ -21,7 +21,9 @@ class CoordClient(object):
             try:
                 self.conn.settimeout(1)
                 self.conn.sendto(dumps(("ADD", port)), self.coord_addr)
-                break
+                data, addr = self.conn.recvfrom(4096)
+                if data == "GOT":
+                    break
             except timeout:
                 continue
 
