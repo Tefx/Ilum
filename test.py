@@ -1,44 +1,24 @@
-from gevent.socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM
-from cPickle import dumps, loads
-from client import CoordClient, StorageClient
-from utils import Data
+from client import Client, StorageClient
+from utils import Fun as F
+from cPickle import dumps
+from zlib import compress
 
-class Client(object):
-    def __init__(self, coord_addr):
-        self.coord = CoordClient(coord_addr)
+D = StorageClient("localhost")
 
-    def eval(self, E):
-        workers = self.coord.require(1)
-        if len(workers) == 1:
-            worker = workers[0]
-            res = worker.process(E)
-            if isinstance(res, Exception): print res
-            return res
-        else:
-            return None
+def fun(item):
+    from hashlib import sha512
+    res = ""
+    for i in range(10000):
+        res = sha512(item*i+res).hexdigest()
+    return res
 
-if __name__ == '__main__':
-    sc = StorageClient("localhost")
+e1 = (cmp, 0, (cmp, 4, 6))
+e2 = ("map", F(fun), map(str, range(10)))
+e3 = (cmp, (cmp, 0, (cmp, 0)), (cmp, 0, 4))
+e4 = ("seq", (cmp, 3, 1), (cmp, 6, 8))
+e5 = ("local", "seq", (cmp, 3, 1), (cmp, 6, 6))
+e7 = ("map", F(fun), D(['1','2','3','4','5','6','7','8','9']))
+e8 = (range, 10)
+e9 = ("seq", e7, e7, e7)
 
-    def fun(item):
-        from hashlib import sha512
-        res = ""
-        for i in range(10000):
-            res = sha512(item*i+res).hexdigest()
-        return res
-
-    sc.add_func(fun)
-
-    data = Data.warp(sc, map(str, range(10)))
-
-
-    e1 = (cmp, 0, (cmp, 4, 6))
-    e2 = ("map", "fun", data)
-    e3 = (cmp, (cmp, 0, (cmp, 0)), (cmp, 0, 4))
-    e4 = ("seq", (cmp, 3, 1), (cmp, 6, 8))
-    e5 = ("local", "seq", (cmp, 3, 1), (cmp, 6, 6))
-    e7 = ("map", "fun", ['1','2','3','4','5','6','7','8','9'])
-    e8 = (range, 10)
-    e9 = ("local", "seq", e7, e7, e7)
-
-    print Client("localhost").eval(e2)
+print Client("localhost").eval(e2)

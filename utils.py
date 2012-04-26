@@ -37,38 +37,18 @@ def shortByHex(url):
         _subHex = _subHex >> 5
     return ''.join(_o)
 
-from client import StorageClient
+import marshal
+from types import FunctionType
+class Fun(object):
+    def __init__(self, f):
+        self.f_code = marshal.dumps(f.func_code)
+        self.f = None
 
-class Data(object):
-    def __init__(self, data_id, start, end, base_addr):
-        self.base_addr = base_addr
-        self.data_id = data_id
-        self.start = start
-        self.end = end
-        self.data = None
-        self.len = self.end-self.start
+    def __call__(self, *args):
+        if not self.f: 
+            self.f = FunctionType(marshal.loads(self.f_code), globals())
+        return self.f(*args)
 
-    def __len__(self):
-        return self.len
 
-    def __getslice__(self, i, j):
-        if i < 0: 
-            start = self.end + i 
-        else:
-            start = self.start + i
 
-        if j < 0:
-            end = self.end + j
-        else:
-            end = self.start + j
-        return Data(self.data_id, start, end, self.base_addr)
 
-    def __getitem__(self, key):
-        if not self.data:
-            self.data = StorageClient(*self.base_addr).get_data(self.data_id, self.start, self.end)
-        return self.data[key]
-
-    @classmethod
-    def warp(cls, source, data):
-        data_id = source.add_data(data)
-        return Data(data_id, 0, len(data), source.base_addr)

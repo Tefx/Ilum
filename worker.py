@@ -1,8 +1,7 @@
 import gevent
-from gevent import monkey; monkey.patch_all()
 from gevent.socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM, gethostname, gethostbyname
 from sys import argv
-from client import CoordClient, StorageClient
+from client import CoordClient
 from utils import getPort, split_n
 from cPickle import dumps, loads, HIGHEST_PROTOCOL
 
@@ -10,7 +9,7 @@ MIN_PORT_NO = 50000
 MAX_PORT_NO = 60000
 
 class BaseWorker(object):
-	def __init__(self, coord_addr, maintain_port):
+	def __init__(self, maintain_port, coord_addr):
 		self.coord = CoordClient(coord_addr)
 		self.work_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
 		self.maintain_port = maintain_port
@@ -53,12 +52,10 @@ class BaseWorker(object):
 				self.coord.add(self.work_port)
 
 class Worker(BaseWorker):
-	def __init__(self, maintain_port, coord_addr, stor_addr):
-		super(Worker, self).__init__(coord_addr, maintain_port)
-		self.stor = StorageClient(stor_addr)
+	def __init__(self, maintain_port, coord_addr):
+		super(Worker, self).__init__(maintain_port, coord_addr)
 
 	def handle(self, data):
-		self.func_buf = {}
 		return self.eval(data)
 		
 	def eval(self, e, local=False):
@@ -71,15 +68,8 @@ class Worker(BaseWorker):
 			return e
 
 	def apply(self, func, args, local=False):
-		if isinstance(func, str):
-			if hasattr(self, func):
-				f = getattr(self, func)
-				return f(args, local)
-			else:
-				if func not in self.func_buf:
-					self.func_buf[func] = self.stor.get_func(func)
-				f = self.func_buf[func]
-				return f(*args)
+		if isinstance(func, str) and hasattr(self, func):
+			return getattr(self, func)(args, local)
 		else:
 			return func(*args)
 
@@ -106,13 +96,12 @@ class Worker(BaseWorker):
 if __name__ == '__main__':
 	from sys import argv
 	local_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
-	if len(argv) < 3:
+	if len(argv) < 2:
 		coord_addr = "localhost"
-		stor_addr = "localhost"
 	else:
-		coord_addr, stor_addr = argv[1:]
+		coord_addr = argv[1]
 
-	worker = Worker(local_port, coord_addr, stor_addr)
+	worker = Worker(local_port, coord_addr)
 	worker.run()
 
 
