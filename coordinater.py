@@ -11,6 +11,11 @@ class Coordinater(object):
         self.sock.bind(('', port))
         self.pool = Pool(MAX_LETS)
 
+    def add_worker(self, worker):
+        if worker not in self.workers:
+            print "added:", worker
+            self.workers.append(worker)
+
     def require(self, num):
         res = []
         got = 0
@@ -19,26 +24,28 @@ class Coordinater(object):
             got += 1
         return res
 
-    def run(self):
+    def cry(self):
         conn = socket(AF_INET, SOCK_DGRAM)
         conn.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        print "starting..."
         for port in range(50000, 60000):
             conn.sendto('CRY', ('<broadcast>', port))
-        print "started."
+
+    def run(self):
+        self.cry()
         while True:
             data, addr = self.sock.recvfrom(1024)
             self.handle(loads(data), addr)
 
     def handle(self, data, addr):
         if data[0] == "ADD":
-            print "added:", (addr[0], data[1])
-            self.workers.append((addr[0], data[1]))
+            self.add_worker((addr[0], data[1]))
+            self.sock.sendto("GOT", addr)
         elif data[0] == "REQ":
             res = self.require(data[1])
             self.sock.sendto(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n", addr)
         elif data[0] == "CRY":
-            self.sock.sendto("CRY", (addr[0], data[1]))
+            self.cry()
+            #self.sock.sendto("CRY", (addr[0], data[1]))
 
 if __name__ == '__main__':
     Coordinater().run()

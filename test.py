@@ -13,7 +13,7 @@ def fun(item):
     return res
 
 e1 = (cmp, 0, (cmp, 4, 6))
-e2 = ("map", F(fun), map(str, range(10)))
+e2 = ("map", F(fun), map(str, range(100)))
 e3 = (cmp, (cmp, 0, (cmp, 0)), (cmp, 0, 4))
 e4 = ("seq", (cmp, 3, 1), (cmp, 6, 8))
 e5 = ("local", "seq", (cmp, 3, 1), (cmp, 6, 6))
@@ -21,4 +21,4 @@ e5 = ("local", "seq", (cmp, 3, 1), (cmp, 6, 6))
 e8 = (range, 10)
 #e9 = ("seq", e7, e7, e7)
 
-print Client("localhost").eval(e2)
+Client("localhost").eval(e2)

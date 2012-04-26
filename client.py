@@ -1,5 +1,5 @@
 from cPickle import dumps, loads, HIGHEST_PROTOCOL
-from gevent.socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM, SOL_SOCKET, SO_BROADCAST
+from gevent.socket import socket, timeout, AF_INET, SOCK_DGRAM, SOCK_STREAM, SOL_SOCKET, SO_BROADCAST
 
 ####################CoordClient######################
 
@@ -17,7 +17,13 @@ class CoordClient(object):
         self.conn.sendto(dumps(('CRY', port)), ('<broadcast>', COORD_PORT))
 
     def add(self, port):
-        self.conn.sendto(dumps(("ADD", port)), self.coord_addr)
+        while True:
+            try:
+                self.conn.settimeout(1)
+                self.conn.sendto(dumps(("ADD", port)), self.coord_addr)
+                break
+            except timeout:
+                continue
 
     def require(self, num):
         self.conn.sendto(dumps(("REQ", num)), self.coord_addr)
@@ -125,7 +131,8 @@ class Data(object):
 
 class Client(object):
     def __init__(self, coord_addr):
-        self.coord = CoordClient(coord_addr)
+        self.coord = CoordClient()
+        self.coord.set_addr("localhost")
 
     def eval(self, E):
         workers = self.coord.require(1)
