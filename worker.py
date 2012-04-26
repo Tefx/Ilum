@@ -9,10 +9,10 @@ MIN_PORT_NO = 50000
 MAX_PORT_NO = 60000
 
 class BaseWorker(object):
-	def __init__(self, maintain_port, coord_addr):
-		self.coord = CoordClient(coord_addr)
+	def __init__(self):
+		self.coord = CoordClient()
 		self.work_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
-		self.maintain_port = maintain_port
+		self.maintain_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
 		self.sock = socket(AF_INET, SOCK_STREAM) 
 		self.sock.bind(("", self.work_port)) 
 		self.sock.listen(100) 
@@ -42,18 +42,16 @@ class BaseWorker(object):
 			self.coord.add(self.work_port)
 
 	def _maintain(self):
-		self.coord.add(self.work_port)
+		self.coord.cry(self.maintain_port)
 		conn = socket(AF_INET, SOCK_DGRAM)
 		conn.bind(('', self.maintain_port))
 		while True:
 			data, addr = conn.recvfrom(1024)
-			if data == "ASK":
-				self.coord = CoordClient(addr[0])
+			if data == "CRY":
+				self.coord.set_addr(addr[0])
 				self.coord.add(self.work_port)
 
 class Worker(BaseWorker):
-	def __init__(self, maintain_port, coord_addr):
-		super(Worker, self).__init__(maintain_port, coord_addr)
 
 	def handle(self, data):
 		return self.eval(data)
@@ -94,14 +92,6 @@ class Worker(BaseWorker):
 		return [flatten for inner in [item.value for item in lets] for flatten in inner]
 
 if __name__ == '__main__':
-	from sys import argv
-	local_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
-	if len(argv) < 2:
-		coord_addr = "localhost"
-	else:
-		coord_addr = argv[1]
-
-	worker = Worker(local_port, coord_addr)
-	worker.run()
+	Worker().run()
 
 

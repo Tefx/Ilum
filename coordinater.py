@@ -24,7 +24,7 @@ class Coordinater(object):
         conn.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         print "starting..."
         for port in range(50000, 60000):
-            conn.sendto('ASK', ('<broadcast>', port))
+            conn.sendto('CRY', ('<broadcast>', port))
         print "started."
         while True:
             data, addr = self.sock.recvfrom(1024)
@@ -32,10 +32,13 @@ class Coordinater(object):
 
     def handle(self, data, addr):
         if data[0] == "ADD":
+            print "added:", (addr[0], data[1])
             self.workers.append((addr[0], data[1]))
         elif data[0] == "REQ":
             res = self.require(data[1])
             self.sock.sendto(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n", addr)
+        elif data[0] == "CRY":
+            self.sock.sendto("CRY", (addr[0], data[1]))
 
 if __name__ == '__main__':
     Coordinater().run()

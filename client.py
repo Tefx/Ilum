@@ -1,23 +1,29 @@
 from cPickle import dumps, loads, HIGHEST_PROTOCOL
-from gevent.socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM
+from gevent.socket import socket, AF_INET, SOCK_DGRAM, SOCK_STREAM, SOL_SOCKET, SO_BROADCAST
 
 ####################CoordClient######################
 
 COORD_PORT = 8523
 
 class CoordClient(object):
-    def __init__(self, coord_addr):
+    def __init__(self):
+        self.conn = socket(AF_INET, SOCK_DGRAM)
+        self.conn.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+
+    def set_addr(self, coord_addr):
         self.coord_addr = (coord_addr, COORD_PORT)
-        self.coon = socket(AF_INET, SOCK_DGRAM)
+
+    def cry(self, port):
+        self.conn.sendto(dumps(('CRY', port)), ('<broadcast>', COORD_PORT))
 
     def add(self, port):
-        self.coon.sendto(dumps(("ADD", port)), self.coord_addr)
+        self.conn.sendto(dumps(("ADD", port)), self.coord_addr)
 
     def require(self, num):
-        self.coon.sendto(dumps(("REQ", num)), self.coord_addr)
+        self.conn.sendto(dumps(("REQ", num)), self.coord_addr)
         data = ""
         while True:
-            data_buf, addr = self.coon.recvfrom(4096)
+            data_buf, addr = self.conn.recvfrom(4096)
             data += data_buf
             if data[-4:] == "\r\n\r\n": break
         got = loads(data[:-4])
