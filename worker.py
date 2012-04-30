@@ -1,57 +1,24 @@
 import gevent
-from gevent.socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM, gethostname, gethostbyname
-from sys import argv
-from client import CoordClient
-from utils import getPort, split_n
-from cPickle import dumps, loads, HIGHEST_PROTOCOL
+import cPickle as pickle
+from baseworker import BaseWorker
+from utils import RemoteException
 
-MIN_PORT_NO = 50000
-MAX_PORT_NO = 60000
-
-class BaseWorker(object):
-	def __init__(self):
-		self.coord = CoordClient()
-		self.work_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
-		self.maintain_port = getPort(MIN_PORT_NO, MAX_PORT_NO)
-		self.sock = socket(AF_INET, SOCK_STREAM) 
-		self.sock.bind(("", self.work_port)) 
-		self.sock.listen(100) 
-
-	def handle(self, data):
-		pass
-
-	def require_workers(self, n):
-		return self.coord.require(n)
-
-	def run(self):
-		gevent.joinall([gevent.spawn(self._server), gevent.spawn(self._maintain)])
-
-	def _server(self):
-		while True:
-			conn, address = self.sock.accept()  
-			data = ""
-			while True:
-				buf = conn.recv(4096)
-				if not buf: break
-				data += buf
-				if data[-4:] == "\r\n\r\n": break
-			if not data: break
-			res = self.handle(loads(data[:-4]))
-			conn.sendall(dumps(res, HIGHEST_PROTOCOL)+"\r\n\r\n")
-			conn.close()
-			self.coord.add(self.work_port)
-
-	def _maintain(self):
-		self.coord.cry(self.maintain_port)
-		conn = socket(AF_INET, SOCK_DGRAM)
-		conn.bind(('', self.maintain_port))
-		while True:
-			data, addr = conn.recvfrom(1024)
-			if data == "CRY":
-				self.coord.set_addr(addr[0])
-				self.coord.add(self.work_port)
+def split_n(l, n):
+    len_l = len(l)
+    num = len_l / n
+    k = len_l - num * n
+    end = 0
+    res = []
+    while end < len_l:
+        start = end
+        end = start + num
+        if len(res) < k: end += 1
+        res.append(l[start:end])
+    return res
 
 class Worker(BaseWorker):
+	def __init__(self, maintain_port):
+		super(Worker, self).__init__(maintain_port)
 
 	def handle(self, data):
 		return self.eval(data)
@@ -66,6 +33,9 @@ class Worker(BaseWorker):
 			return e
 
 	def apply(self, func, args, local=False):
+		for arg in args:
+			if isinstance(arg, RemoteException):
+				return arg
 		if isinstance(func, str) and hasattr(self, func):
 			return getattr(self, func)(args, local)
 		else:
@@ -89,9 +59,14 @@ class Worker(BaseWorker):
 	def distribute(self, jobs):
 		lets = [gevent.spawn(worker.process, item) for worker, item in jobs]
 		gevent.joinall(lets)
-		return [flatten for inner in [item.value for item in lets] for flatten in inner]
+		raw_results = [item.value for item in lets]
+		res = [flatten for inner in [item.value for item in lets] for flatten in inner]
+		return res
 
 if __name__ == '__main__':
-	Worker().run()
+    from sys import argv, exit
+    if len(argv) != 2:
+        exit('Usage: %s maintain_port\nYou should ALWAYS use a monitoring script to launch workers.' % __file__)
+    Worker(int(argv[1])).run()
 
 
