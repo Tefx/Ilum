@@ -41,12 +41,12 @@ if __name__ == '__main__':
     def fun(item):
         from hashlib import sha512
         res = ""
-        for i in range(1000):
+        for i in range(10000):
             res = sha512(item*i+res).hexdigest()
         return len(res)
 
     e1 = (cmp, 0, (cmp, 4, 6))
-    e2 = ("map2", F(fun), map(str, range(100)))
+    e2 = ("map", F(fun), map(str, range(100)))
     e3 = (cmp, (cmp, 0), 1)
     e4 = ("seq", (cmp, 3, 1), (cmp, 6, 8))
     e5 = ("local", "seq", (cmp, 3, 1), (cmp, 6, 6))
@@ -54,4 +54,4 @@ if __name__ == '__main__':
     e8 = (range, 10)
     e9 = ("seq", e7, e7, e7)
 
-    print Client("localhost").eval(e2)
+    print Client("192.168.10.244").eval(e2)

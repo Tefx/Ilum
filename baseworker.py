@@ -104,7 +104,7 @@ class BaseWorker(object):
         conn.bind(('', self.maintain_port))
         self.cry()
         while True:
-            data, addr = conn.recvfrom(1024)
+            data, addr = pickle.loads(conn.recvfrom(1024)[0])
             gevent.spawn(self.handle_maintain_request, pickle.loads(data), addr)
 
     def handle_maintain_request(self, data, addr):
@@ -127,7 +127,7 @@ class BaseWorker(object):
                 if data == "GOT":
                     break
             except socket.timeout:
-                if n < 10: continue
+                if n > 10: break
         conn.close()
 
     def cry(self):

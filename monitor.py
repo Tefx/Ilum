@@ -16,12 +16,12 @@ class Proxy(object):
     def run(self):
         while True:
             data, addr = self.sock.recvfrom(1024)
-            gevent.spawn(self.handle, data)
+            gevent.spawn(self.handle, data, addr)
             
-    def handle(self, data):
+    def handle(self, data, addr):
         conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         for port in self.dest_ports:
-            conn.sendto(data, ("localhost", port))
+            conn.sendto(pickle.dumps((data, addr)), ("localhost", port))
 
     def add_port(self, port):
         if port not in self.dest_ports:
