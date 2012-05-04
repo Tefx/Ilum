@@ -4,6 +4,7 @@ import gevent
 import cPickle as pickle
 from uuid import uuid1
 
+
 class Coordinator(object):
     def __init__(self):
         self.uuid = uuid1()
@@ -43,7 +44,7 @@ class Coordinator(object):
             res.append(self.workers.pop(0))
             got += 1
         conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        conn.sendto(pickle.dumps(res, pickle.HIGHEST_PROTOCOL)+"\r\n\r\n", addr)
+        conn.sendto(pickle.dumps(res, pickle.HIGHEST_PROTOCOL) + "\r\n\r\n", addr)
 
 if __name__ == '__main__':
     Coordinator().run()

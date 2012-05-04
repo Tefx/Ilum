@@ -4,23 +4,26 @@ import gevent.socket as socket
 import cPickle as pickle
 from utils import RemoteException
 
+
 def getPort(start, end):
-    import os,random  
-    pscmd = "netstat -ntl |grep -v Active| grep -v Proto|awk '{print $4}'|awk -F: '{print $NF}'"  
-    procs = os.popen(pscmd).read()  
-    procarr = procs.split("\n")  
-    tt= random.randint(start,end)  
-    if tt not in procarr:  
-        return tt  
-    else:  
+    import os
+    import random
+    pscmd = "netstat -ntl |grep -v Active| grep -v Proto|awk '{print $4}'|awk -F: '{print $NF}'"
+    procs = os.popen(pscmd).read()
+    procarr = procs.split("\n")
+    tt = random.randint(start, end)
+    if tt not in procarr:
+        return tt
+    else:
         getPort()
+
 
 class BaseWorkerClient(object):
     def __init__(self, sock):
         self.sock = sock
 
     def process(self, data):
-        self.sock.sendall(pickle.dumps(data, pickle.HIGHEST_PROTOCOL)+"\r\n\r\n")
+        self.sock.sendall(pickle.dumps(data, pickle.HIGHEST_PROTOCOL) + "\r\n\r\n")
         result = ""
         while True:
             buf = self.sock.recv(4096)
@@ -29,14 +32,15 @@ class BaseWorkerClient(object):
         self.sock.close()
         return pickle.loads(result[:-4])
 
+
 class BaseWorker(object):
-    def __init__(self, maintain_port, baseWorkerClientCls = BaseWorkerClient):
+    def __init__(self, maintain_port, baseWorkerClientCls=BaseWorkerClient):
         self.maintain_port = maintain_port
         self.coord_uuid = None
         self.coord_addr = None
         self.work_port = getPort(MIN_WORK_PORT_NO, MAX_WORK_PORT_NO)
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-        self.sock.bind(("", self.work_port)) 
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(("", self.work_port))
         self.sock.listen(1)
         self.WorkerClientCls = baseWorkerClientCls
 
@@ -60,7 +64,8 @@ class BaseWorker(object):
                 n += 1
                 return self.do_require(num)
             except socket.timeout:
-                if n < 5: continue
+                if n < 5:
+                    continue
                 return []
 
     def do_require(self, num):
@@ -73,29 +78,32 @@ class BaseWorker(object):
             data += data_buf
             if data[-4:] == "\r\n\r\n": break
         got = pickle.loads(data[:-4])
-        if not got: return []
+        if not got:
+            return []
         cur = [worker for worker in [self.make_worker(addr) for addr in got] if worker]
         if len(cur) < num:
-            return cur + self.require_workers(num-len(cur))
+            return cur + self.require_workers(num - len(cur))
         else:
             return cur
 
     def _server(self):
         while True:
-            conn, address = self.sock.accept()  
+            conn, address = self.sock.accept()
             data = ""
             while True:
                 buf = conn.recv(4096)
-                if not buf: break
+                if not buf:
+                    break
                 data += buf
                 if data[-4:] == "\r\n\r\n": break
-            if not data: break
+            if not data:
+                break
             cmd = pickle.loads(data[:-4])
             try:
                 res = self.handle(cmd)
             except Exception as e:
                 res = RemoteException(e, cmd)
-            conn.sendall(pickle.dumps(res, pickle.HIGHEST_PROTOCOL)+"\r\n\r\n")
+            conn.sendall(pickle.dumps(res, pickle.HIGHEST_PROTOCOL) + "\r\n\r\n")
             conn.close()
             self.add_self()
 
@@ -127,7 +135,8 @@ class BaseWorker(object):
                 if data == "GOT":
                     break
             except socket.timeout:
-                if n > 10: break
+                if n > 10:
+                    break
         conn.close()
 
     def cry(self):
@@ -141,5 +150,3 @@ if __name__ == '__main__':
     if len(argv) != 2:
         exit('Usage: %s maintain_port\nYou should ALWAYS use a monitoring script to launch workers.' % __file__)
     BaseWorker(int(argv[1]), BaseWorkerClient).run()
-
-
